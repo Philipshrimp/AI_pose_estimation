@@ -1,0 +1,3 @@
+[submodule "SuperPoint"]
+	path = SuperPoint
+	url = https://github.com/Philipshrimp/SuperPoint.git
