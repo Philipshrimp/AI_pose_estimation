@@ -1,62 +1,40 @@
-import numpy as np
+import os
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 
-def match_features(desc1, desc2, threshold=0.75):
-    matches = []
-    for i, d1 in enumerate(desc1):
-        distances = np.linalg.norm(desc2 - d1, axis=1)
-        min_dist_idx = np.argmin(distances)
-        min_dist = distances[min_dist_idx]
+import torch
 
-        if min_dist < threshold:
-            matches.append((i, min_dist_idx, min_dist))
-    
-    matches = sorted(matches, key=lambda x: x[2])
-    return matches
+from lightglue import LightGlue, SuperPoint
+from lightglue import match_pair
+from lightglue.utils import load_and_mask_image, rbd
+from lightglue import viz2d
 
-def prosac(matches, keypoints1, keypoints2, max_trials=1000, threshold=1.0):
-    best_inliers = []
-    best_model = None
 
-    for trial in range(max_trials):
-        # 1. Progressively select matches based on their sorted order
-        subset = matches[:min(trial+1, len(matches))]
-        
-        # 2. Randomly sample a subset of the matches
-        sampled_match = subset[np.random.randint(0, len(subset))]
+# SuperPoint+LightGlue
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # 'mps', 'cpu'
 
-        # 3. Compute a transformation model using the sampled matches (e.g., homography)
-        idx1, idx2, _ = sampled_match
-        kp1 = keypoints1[idx1]
-        kp2 = keypoints2[idx2]
+extractor = SuperPoint(max_num_keypoints=2048).eval().to(device)  # load the extractor
+matcher = LightGlue(features="superpoint").eval().to(device)
 
-        # Here, we're simulating a simple model. Replace this with an actual model estimation.
-        model = kp2 - kp1  # Dummy model: simple translation (replace with actual transformation)
+# load each image as a torch.Tensor on GPU with shape (3,H,W), normalized in [0,1]
+image0 = load_and_mask_image('../data/elp_avg/average0.bmp').to(device)
+image1 = load_and_mask_image('../data/elp_avg/average1.bmp').to(device)
 
-        # 4. Evaluate the model by counting the number of inliers
-        inliers = []
-        for idx1, idx2, _ in matches:
-            kp1 = keypoints1[idx1]
-            kp2 = keypoints2[idx2]
-            projected_kp1 = kp1 + model  # Apply the transformation (dummy model)
+# extract local features
+feats0 = extractor.extract(image0)  # auto-resize the image, disable with resize=None
+feats1 = extractor.extract(image1)
 
-            if np.linalg.norm(projected_kp1 - kp2) < threshold:
-                inliers.append((idx1, idx2))
+# match the features
+matches01 = matcher({'image0': feats0, 'image1': feats1})
 
-        # 5. Update the best model if the current one is better
-        if len(inliers) > len(best_inliers):
-            best_inliers = inliers
-            best_model = model
+feats0, feats1, matches01 = [
+    rbd(x) for x in [feats0, feats1, matches01]
+]  # remove batch dimension
 
-    return best_inliers, best_model
+kpts0, kpts1, matches = feats0["keypoints"], feats1["keypoints"], matches01["matches"]
+m_kpts0, m_kpts1 = kpts0[matches[..., 0]], kpts1[matches[..., 1]]
 
-# 예시 사용법
-desc1 = np.random.rand(500, 256)  # 이미지 1의 디스크립터 (예시)
-desc2 = np.random.rand(500, 256)  # 이미지 2의 디스크립터 (예시)
+axes = viz2d.plot_images([image0, image1])
+viz2d.plot_matches(m_kpts0, m_kpts1, color="lime", lw=0.2)
+viz2d.add_text(0, f'Stop after {matches01["stop"]} layers', fs=20)
 
-keypoints1 = np.random.rand(500, 2) * 100  # 이미지 1의 키포인트 (예시)
-keypoints2 = keypoints1 + np.random.rand(500, 2) * 5  # 이미지 2의 키포인트 (약간의 변형 추가)
-
-matches = match_features(desc1, desc2)
-inliers, model = prosac(matches, keypoints1, keypoints2)
-
-print(f"Found {len(inliers)} inliers using PROSAC")
+viz2d.save_plot('results/matches.png')
