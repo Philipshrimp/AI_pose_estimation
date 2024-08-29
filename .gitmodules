@@ -1,3 +1,6 @@
 [submodule "SuperPoint"]
 	path = SuperPoint
 	url = https://github.com/Philipshrimp/SuperPoint.git
+[submodule "LightGlue"]
+	path = LightGlue
+	url = https://github.com/Philipshrimp/LightGlue.git
