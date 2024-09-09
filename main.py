@@ -11,7 +11,7 @@ from lightglue.utils import load_image,load_and_mask_image, rbd
 from lightglue import viz2d
 
 
-def compute_fundamental_matrix_m_estimator(src_pts, dst_pts, max_iterations=10000):
+def compute_fundamental_matrix_m_estimator(src_pts, dst_pts, max_iterations=5000):
     """Compute fundamental matrix using M-estimator with Huber loss."""
     best_F = None
     best_error = float('inf') 
@@ -44,7 +44,6 @@ def compute_fundamental_matrix_m_estimator(src_pts, dst_pts, max_iterations=1000
             best_F = F
 
         if (best_error < 5.0) and (best_top_error < 1.0):
-            print(i)
             break
 
     print("Top errors: ", best_top_error)
@@ -103,8 +102,8 @@ print("Initialization done")
 # This will be removed
 
 # load each image as a torch.Tensor on GPU with shape (3,H,W), normalized in [0,1]
-src_index = 0
-dst_index = 1
+src_index = 3
+dst_index = 8
 root_path = '../data/raw'
 
 original_img0 = load_image(root_path + f'/{src_index}.bmp')
@@ -141,7 +140,7 @@ viz2d.save_plot(f'results/matches_{dst_index}.png')
 print(f"Time taken: {time_interval1 - start_time} seconds")
 print(f"Time taken: {time_interval2 - time_interval1} seconds")
 print(f"Time taken: {end_time - time_interval2} seconds")
-print(f"Time taken: {end_time - start_time} seconds")
+print(f"Learning Time taken: {end_time - start_time} seconds")
 
 # NumPy 배열로 변환
 src_pts = m_kpts0.cpu().numpy()
@@ -154,23 +153,31 @@ dist_coeffs = np.array([1.70168395e+01, -4.91002680e+00, -1.75329962e-03, -4.807
 
 K, _ = cv2.getOptimalNewCameraMatrix(original_K, dist_coeffs, (image0.shape[1], image0.shape[0]), alpha=0, centerPrincipalPoint=True)
 
-pose_time = time.time()
-
-R, t = compute_pose(src_pts, dst_pts, K)
-
-P1 = np.hstack((K, np.zeros((3, 1))))
-P2 = K @ np.hstack((R, t))
-
-pts3D = triangulate_points(P1, P2, src_pts, dst_pts)
-
-error1 = calculate_reprojection_error(pts3D, src_pts, K, np.eye(3), np.zeros((3, 1)))
-error2 = calculate_reprojection_error(pts3D, dst_pts, K, R, t)
-
 # 평균 재투영 오차
-avg_error = (error1 + error2) / 2
+avg_error = float('inf')
 
-print(f"Time taken: {time.time() - pose_time} seconds")
-print(f"첫 번째 이미지 재투영 오차: {error1:.4f} 픽셀")
-print(f"두 번째 이미지 재투영 오차: {error2:.4f} 픽셀")
-print(f"평균 재투영 오차: {avg_error:.4f} 픽셀")
-print("======================================")
+while (avg_error > 2.0):
+    pose_time = time.time()
+    R, t = compute_pose(src_pts, dst_pts, K)
+
+    P1 = np.hstack((K, np.zeros((3, 1))))
+    P2 = K @ np.hstack((R, t))
+
+    pts3D = triangulate_points(P1, P2, src_pts, dst_pts)
+
+    error1 = calculate_reprojection_error(pts3D, src_pts, K, np.eye(3), np.zeros((3, 1)))
+    error2 = calculate_reprojection_error(pts3D, dst_pts, K, R, t)
+    avg_error = (error1 + error2) / 2
+
+    print(f"Pose Time taken: {time.time() - pose_time} seconds")
+    print(f"첫 번째 이미지 재투영 오차: {error1:.4f} 픽셀")
+    print(f"두 번째 이미지 재투영 오차: {error2:.4f} 픽셀")
+    print(f"평균 재투영 오차: {avg_error:.4f} 픽셀")
+
+    if (avg_error > 2.0):
+        print("Invalid pose estimation result. re-run the pose estimation.")
+    print("======================================")
+
+print("---Final result---")
+print(R)
+print(t)
