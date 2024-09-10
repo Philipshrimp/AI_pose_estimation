@@ -6,10 +6,21 @@ from src import pose_estimator
 
 
 def triangulate_points(P1, P2, pts1, pts2):
-    # [TODO] REPLACE OpenCV!!
-    pts4D = cv2.triangulatePoints(P1, P2, pts1.T, pts2.T)
-    
+    pts4D = np.zeros((4, pts1.shape[0]))
+
+    for i in range(pts1.shape[0]):
+        A = np.array([
+            pts1[i, 0] * P1[2, :] - P1[0, :],
+            pts1[i, 1] * P1[2, :] - P1[1, :],
+            pts2[i, 0] * P2[2, :] - P2[0, :],
+            pts2[i, 1] * P2[2, :] - P2[1, :]
+        ])
+        
+        _, _, Vt = np.linalg.svd(A)
+        pts4D[:, i] = Vt[-1]
+
     pts3D = pts4D[:3, :] / pts4D[3, :]
+    
     return pts3D.T
 
 def calculate_reprojection_error(pts3D, pts2D, K, R, t):
@@ -17,10 +28,9 @@ def calculate_reprojection_error(pts3D, pts2D, K, R, t):
         pts3D = pts3D.T
 
     pts3D_cam = R @ pts3D.T + t
-
-    # [TODO] REPLACE OpenCV!!
-    pts2D_proj, _ = cv2.projectPoints(pts3D_cam.T, np.zeros(3), np.zeros(3), K, None)
-    pts2D_proj = pts2D_proj.reshape(-1, 2)
+    pts2D_proj_hom = K @ pts3D_cam
+    pts2D_proj = pts2D_proj_hom[:2, :] / pts2D_proj_hom[2, :]
+    pts2D_proj = pts2D_proj.T
 
     errors = np.sqrt(np.sum((pts2D - pts2D_proj)**2, axis=1))
 
