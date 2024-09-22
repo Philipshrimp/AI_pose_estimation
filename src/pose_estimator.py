@@ -1,26 +1,42 @@
 import numpy as np
 
 
-def compute_fundamental_matrix(src_pts, dst_pts):
-    src_pts_h = np.hstack((src_pts, np.ones((src_pts.shape[0], 1))))
-    dst_pts_h = np.hstack((dst_pts, np.ones((dst_pts.shape[0], 1))))
+def normalize_points(pts):
+    mean = np.mean(pts, axis=0)
+    std = np.std(pts)
+    
+    T = np.array([[1/std, 0, -mean[0]/std],
+                  [0, 1/std, -mean[1]/std],
+                  [0, 0, 1]])
+    
+    pts_h = np.hstack([pts, np.ones((pts.shape[0], 1))])
+    pts_norm = (T @ pts_h.T).T
+    
+    return pts_norm, T
 
-    A = np.array([[src_pts_h[i][0] * dst_pts_h[i][0], 
-                    src_pts_h[i][0] * dst_pts_h[i][1], 
-                    src_pts_h[i][0], 
-                    src_pts_h[i][1] * dst_pts_h[i][0], 
-                    src_pts_h[i][1] * dst_pts_h[i][1], 
-                    src_pts_h[i][1], 
-                    dst_pts_h[i][0], 
-                    dst_pts_h[i][1], 
-                    1] for i in range(len(src_pts_h))])
+def construct_A(pts1, pts2):
+    A = []
+    for i in range(pts1.shape[0]):
+        x1, y1 = pts1[i, 0], pts1[i, 1]
+        x2, y2 = pts2[i, 0], pts2[i, 1]
+        A.append([x2*x1, x2*y1, x2, y2*x1, y2*y1, y2, x1, y1, 1])
+
+    return np.array(A)
+
+def compute_fundamental_matrix(src_pts, dst_pts):
+    src_norm, T1 = normalize_points(src_pts)
+    dst_norm, T2 = normalize_points(dst_pts)
+
+    A = construct_A(src_norm[:, :2], dst_norm[:, :2])
 
     U, S, Vt = np.linalg.svd(A)
-    F = Vt[-1].reshape(3, 3)
+    F_norm = Vt[-1].reshape(3, 3)
 
-    U, S, Vt = np.linalg.svd(F)
+    U, S, Vt = np.linalg.svd(F_norm)
     S[-1] = 0
-    F = U @ np.diag(S) @ Vt
+    F_norm = U @ np.diag(S) @ Vt
+
+    F = T2.T @ F_norm @ T1
 
     return F
 
